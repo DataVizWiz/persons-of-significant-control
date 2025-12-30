@@ -1,0 +1,4 @@
+.venv
+layer
+lambda-layer.zip
+*.ipynb
