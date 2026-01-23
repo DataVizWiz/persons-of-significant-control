@@ -2,3 +2,4 @@
 layer
 lambda-layer.zip
 *.ipynb
+__pycache__/
