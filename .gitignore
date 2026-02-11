@@ -1,5 +1,6 @@
-.venv
+.*venv
 layer
 lambda-layer.zip
 *.ipynb
 __pycache__/
+*.pem
