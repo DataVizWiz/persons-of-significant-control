@@ -104,8 +104,8 @@ let y: i32 = x;
 This code will run successfully.
 It says, "copy my value for my variable x, into my variable y".
 It does not transfer ownership.
-x and y are completely different variables with two different memory addresss.
-They just have the same value stored in their memory location.
+x and y are completely different variables with two different memory addresses.
+They have the same value stored in their respective memory locations.
 
 let x: i32 = 5;
 let mut y: i32 = x;
@@ -121,7 +121,7 @@ Example:
 let x = [0; 1_000_000]
 let y = x;
 
-Results in 2 million elements stored on the stack.
+This results in 2 million elements stored on the stack.
 
 To transfer access to data without copying it, Rust uses pointers.
 A pointer is a value that describes a location in memory i.e. a memory address.
@@ -136,4 +136,15 @@ Example:
 let x = Box::new([0; 1_000_000]);
 let y = x;
 
-This says, store x on the stack.
+This says, store x on the stack but store the Box value on the heap.
+x is a pointer to the Box value.
+The pointer value is then copied into y. No data is copied.
+y can now access the Box value using the pointer.
+x has now been "moved" (--> key concept in Rust, more on this later).
+
+----------
+Principle: If a variable on the stack is bound to a box value on the heap,
+then, when Rust deallocates the stack frame that the variable lives on,
+Rust will also deallocate the box's heap memory.
+----------
+
