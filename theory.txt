@@ -1,0 +1,139 @@
+DEFINITIONS
+-----------
+Memory Address
+--------------
+A Memory address acts like a "pointer" that tells you where in memory
+something lives. Think of it like a house address, it doesn't hold any data
+but tells you where the data lives.
+
+Example:
+x is stored at memory address 0x100
+
+You can have multiple pointers, pointing to the same address.
+In other words, make multiple references to the same address.
+
+Example:
+x is stored at memory address 0x100
+r1 is a reference to x.
+r2 is also a reference to x.
+
+A reference does not store any data, it stores the memory address
+to where the data lives.
+
+Example:
+x is stored at memory address 0x100
+x = 5;
+r1 does not store 5, it stores 0x100
+
+Memory Location
+---------------
+A Memory location is the actual physical location where the value resides.
+Think of it as the house itself.
+
+Example:
+Memory location at 0x100 contains the value 5
+
+
+MUTABILITY
+----------
+Variables are mutable be default (cannot be changed)
+
+Example:
+let x: i32 = 5;
+x: i32 = 6;
+
+This results in an error. Why?
+
+x is a binding variable, stored on the stack.
+It is stored at some memory address 0x100.
+The memory location at 0x100 holds the value 5.
+x owns this memory location.
+
+x = 6, implies you want to overwrite/mutate the existing variable.
+Which, by default Rust does not allow.
+
+To mutate a variable, prefix with 'mut'.
+
+Example:
+let mut x: i32 = 5;
+x: i32 = 6;
+
+This code runs successfully.
+
+By declaring x mutable, Rust does not created a new memory address.
+E.g. x stays at 0x100. However, the value at the memory location
+is overwritten with the new value, 6.
+
+How does this differ:
+
+let x: i32 = 5;
+let x: i32 = 6;
+
+This is called "shadowing". What is happening here is,
+Firsly, x is stored at the memory address 0x100.
+Then x is stored at a completed new address 0x102 as completely new variable.
+
+The value 5 is still stored at the memory location for 0x100.
+However, x at 0x102 "blocks" x at 0x100 from being accessible.
+
+For values on the stack, the address is freed after the function ends.
+For values on the heap, the address is freed immediately.
+
+Why does this matter? Let's look at Python.
+
+Example:
+x = [1, 2, 3]
+y = x
+y.append(4)
+
+Variable x is stored on the stack. The list object is stored on the heap.
+y is a reference to x.
+Making changes to y will apply the same changes to x.
+This can make it harder to debug the code when issues arise.
+Especially if the intention is not to change x.
+
+Rust ensures only one owner at a time, or one mutable reference (more on this).
+
+
+OWNERSHIP
+---------
+
+let x: i32 = 5;
+let y: i32 = x;
+
+This code will run successfully.
+It says, "copy my value for my variable x, into my variable y".
+It does not transfer ownership.
+x and y are completely different variables with two different memory addresss.
+They just have the same value stored in their memory location.
+
+let x: i32 = 5;
+let mut y: i32 = x;
+y += 1;
+
+The code block says, "copy my value for x into y"
+Overwrite y by adding 1 to the existing value.
+x is completely unchanged.
+
+Copying data can take up a lot of memory.
+
+Example:
+let x = [0; 1_000_000]
+let y = x;
+
+Results in 2 million elements stored on the stack.
+
+To transfer access to data without copying it, Rust uses pointers.
+A pointer is a value that describes a location in memory i.e. a memory address.
+
+On the stack, pointers are only used to reference the variables on that stack frame
+However, we can store variables on the stack and values on the heap.
+The values are then accessed using a pointer.
+
+Rust provides a construct called Box for placing values on the heap.
+
+Example:
+let x = Box::new([0; 1_000_000]);
+let y = x;
+
+This says, store x on the stack.
