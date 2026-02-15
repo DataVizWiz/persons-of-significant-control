@@ -1,7 +1,7 @@
 use chrono::prelude::*;
 use reqwest::blocking::ClientBuilder;
 use std::fs::{File, write};
-use std::io::copy;
+use std::io::{BufRead, BufReader, copy};
 use std::path::Path;
 use zip::ZipArchive;
 
@@ -21,7 +21,17 @@ fn main() {
 
     // 'zpath' is a reference to a Path that is owned by the download_zip_file function.
     let zpath: &Path = download_zip_file(&fname);
-    let tfile: File = extract_txt_file_from_zip(zpath);
+    let tfile_name: String = extract_txt_file_from_zip(zpath);
+
+    let tfile = File::open(tfile_name).unwrap();
+    let reader = BufReader::new(tfile);
+
+    for line_res in reader.lines() {
+        // Understand more on temporary strings and borrowing
+        let line = line_res.unwrap();
+        // let line = line.trim();
+        println!("{}", line);
+    }
 }
 
 fn define_partition_fname(partition: &str) -> String {
@@ -72,7 +82,7 @@ fn download_zip_file(zip_file: &str) -> &Path {
 // Ownership of 'path' is moved to 'zpath' in main. 'Path' automatically out of scope.
 // Everything else goes out of scope and heap memory is deallocated.
 
-fn extract_txt_file_from_zip(zip_path: &Path) -> File {
+fn extract_txt_file_from_zip(zip_path: &Path) -> String {
     // Ownership of 'zpath' is transferred to 'zip_path'. Data is Path type on the heap.
     println!("[->] Extracting zip path: {:?}", zip_path);
 
@@ -95,6 +105,7 @@ fn extract_txt_file_from_zip(zip_path: &Path) -> File {
     // 'outfile' is a new File object that owns its data on the heap.
     //      'tfile_name' is passed as a reference to the string object.
     //      Set as a mutable variable as copy() requires a mutable reference.
+    //      When using create() file is read-only.
     let mut outfile = File::create(&tfile_name).unwrap();
 
     // copy() requires mutable references.
@@ -103,5 +114,6 @@ fn extract_txt_file_from_zip(zip_path: &Path) -> File {
     copy(&mut tfile, &mut outfile).unwrap();
 
     println!("[->] Extracted file: {}", &tfile_name);
-    outfile
+    // Return file name as string not File type otherwise permission denied issues
+    tfile_name
 }
