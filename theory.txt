@@ -134,17 +134,29 @@ Rust provides a construct called Box for placing values on the heap.
 
 Example:
 let x = Box::new([0; 1_000_000]);
+
+This says, store x on the stack but store the array on the heap.
+x is a pointer to the Box value.
+
+----------
+Principle: If a variable on the stack is OWNS a box value on the heap,
+then, when Rust deallocates the stack frame that the variable lives on,
+Rust will deallocate the box's heap memory.
+----------
+
+Example:
+let x = Box::new([0; 1_000_000]);
 let y = x;
 
-This says, store x on the stack but store the Box value on the heap.
-x is a pointer to the Box value.
-The pointer value is then copied into y. No data is copied.
-y can now access the Box value using the pointer.
-x has now been "moved" (--> key concept in Rust, more on this later).
+x owns the array on the heap.
+The pointer value (memory address) assigned to x is transferred to y. No data is copied.
+Ownership of the array has now been "moved" from x to y.
+y can now access the array using the pointer.
+No heap data is copied.
 
-----------
-Principle: If a variable on the stack is bound to a box value on the heap,
-then, when Rust deallocates the stack frame that the variable lives on,
-Rust will also deallocate the box's heap memory.
-----------
+Once ownership of heap data has been moved from x to y, x can no longer be used.
+We say "x has points to dellocated memory" which is known as undefined behaviour.
+
+The .clone() method can clone data without moving it.
+This will result in duplicate data on the heap.
 
