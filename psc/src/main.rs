@@ -1,5 +1,6 @@
 use chrono::NaiveDate;
 use chrono::prelude::*;
+use csv::Writer;
 use reqwest::blocking::ClientBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
@@ -7,10 +8,37 @@ use std::fs::{File, write};
 use std::io::{BufRead, BufReader, copy};
 use std::path::Path;
 use zip::ZipArchive;
-use csv::Writer;
 
 const DATE_FORMAT: &str = "%Y-%m-%d";
 const BASE_URL: &str = "https://download.companieshouse.gov.uk";
+
+// Create a dedicated struct for writing to csv.
+// This ensures a flattened table is being written rather than nested structs.
+#[derive(Serialize, Debug)]
+struct CompanyCsv {
+    company_number: String,
+
+    etag: Option<String>,
+    kind: Option<String>,
+    name: Option<String>,
+    notified_on: Option<NaiveDate>,
+
+    address_line_1: Option<String>,
+    address_line_2: Option<String>,
+    country: Option<String>,
+    locality: Option<String>,
+    postal_code: Option<String>,
+    premises: Option<String>,
+
+    country_registered: Option<String>,
+    legal_authority: Option<String>,
+    legal_form: Option<String>,
+    place_registered: Option<String>,
+    registration_number: Option<String>,
+
+    link_self: Option<String>,
+    natures_of_control: Option<String>,
+}
 
 // Use Option<> for nested fields that are missing
 //      TODO Understand more on Option<>
@@ -23,10 +51,10 @@ struct Company {
 #[derive(Serialize, Deserialize, Debug)]
 struct Data {
     address: Option<Address>,
-    etag: String,
+    etag: Option<String>,
     identification: Option<Identification>,
-    kind: String,
-    links: Links,
+    kind: Option<String>,
+    links: Option<Links>,
     name: Option<String>,
     natures_of_control: Option<Vec<String>>,
     notified_on: Option<NaiveDate>,
@@ -54,7 +82,7 @@ struct Identification {
 #[derive(Serialize, Deserialize, Debug)]
 struct Links {
     #[serde(rename = "self")]
-    self_: String,
+    self_: Option<String>,
 }
 
 fn main() {
@@ -70,10 +98,11 @@ fn main() {
 
     // 'zpath' is a reference to a Path that is owned by the download_zip_file function.
     let zpath: &Path = download_zip_file(&fname);
-    let tfile_name: String = extract_txt_file_from_zip(zpath);
+    let txt_fname: String = extract_txt_file_from_zip(zpath);
 
-    let rows: Vec<Company> = read_json_lines_to_vec(&tfile_name);
-    let mut wtr = Writer::from_path("out.csv");
+    let rows: Vec<Company> = read_json_lines_to_vec(&txt_fname);
+    let csv_fname = &txt_fname.replace(".txt", ".csv");
+    write_vec_to_csv(rows, &csv_fname);
 }
 
 fn print_type_of<T>(_: &T) {
@@ -180,4 +209,14 @@ fn read_json_lines_to_vec(txt_file: &str) -> Vec<Company> {
         vec.push(company);
     }
     vec
+}
+
+fn write_vec_to_csv(vec: Vec<Company>, csv_fname: &str) {
+    let mut wtr = Writer::from_path(csv_fname).unwrap();
+
+    for row in vec {
+        // Rust recognises wtr as a mutable borrow even though we aren't referencing it?
+        wtr.serialize(row).unwrap();
+    }
+    // wtr.flush().unwrap()
 }
