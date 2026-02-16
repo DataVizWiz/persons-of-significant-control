@@ -1,5 +1,8 @@
+use chrono::NaiveDate;
 use chrono::prelude::*;
 use reqwest::blocking::ClientBuilder;
+use serde::Deserialize;
+use serde_json::from_str;
 use std::fs::{File, write};
 use std::io::{BufRead, BufReader, copy};
 use std::path::Path;
@@ -7,6 +10,51 @@ use zip::ZipArchive;
 
 const DATE_FORMAT: &str = "%Y-%m-%d";
 const BASE_URL: &str = "https://download.companieshouse.gov.uk";
+
+// Use Option<> for nested fields that are missing
+//      TODO Understand more on Option<>
+#[derive(Deserialize, Debug)]
+struct Company {
+    company_number: String,
+    data: Data,
+}
+
+#[derive(Deserialize, Debug)]
+struct Data {
+    address: Option<Address>,
+    etag: String,
+    identification: Option<Identification>,
+    kind: String,
+    links: Links,
+    name: Option<String>,
+    natures_of_control: Option<Vec<String>>,
+    notified_on: Option<NaiveDate>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Address {
+    address_line_1: Option<String>,
+    address_line_2: Option<String>,
+    country: Option<String>,
+    locality: Option<String>,
+    postal_code: Option<String>,
+    premises: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Identification {
+    country_registered: Option<String>,
+    legal_authority: Option<String>,
+    legal_form: Option<String>,
+    place_registered: Option<String>,
+    registration_number: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Links {
+    #[serde(rename = "self")]
+    self_: String,
+}
 
 fn main() {
     // '1of31' is a string literal that lives in the program binary (read-only memory)
@@ -27,11 +75,19 @@ fn main() {
     let reader = BufReader::new(tfile);
 
     for line_res in reader.lines() {
-        // Understand more on temporary strings and borrowing
+        // Understand more on temporary strings and borrowing.
+        //      [!] line_res.unwrap().trim() results in an error.
         let line = line_res.unwrap();
-        // let line = line.trim();
-        println!("{}", line);
+        let line = line.trim();
+
+        // Type annotations are required when deserializing a json string
+        let company: Company = from_str(&line).unwrap();
+        println!("{:?}", company);
     }
+}
+
+fn print_type_of<T>(_: &T) {
+    println!("{}", std::any::type_name::<T>());
 }
 
 fn define_partition_fname(partition: &str) -> String {
@@ -86,34 +142,34 @@ fn extract_txt_file_from_zip(zip_path: &Path) -> String {
     // Ownership of 'zpath' is transferred to 'zip_path'. Data is Path type on the heap.
     println!("[->] Extracting zip path: {:?}", zip_path);
 
-    // 'zfile' is a new File object that owns its data on the heap.
-    let zfile = File::open(zip_path).unwrap();
+    // 'zip_file' is a new File object that owns its data on the heap.
+    let zip_file = File::open(zip_path).unwrap();
 
-    // 'archive' is a new mutable ZipArchive object that owns its data on the heap.
-    //      Understanding of the Read trait is required to understand why zfile is valid.
-    let mut archive = ZipArchive::new(zfile).unwrap();
+    // 'zip_archive' is a new mutable ZipArchive object that owns its data on the heap.
+    //      Understanding of the Read trait is required to understand why zip_file is valid.
+    let mut zip_archive = ZipArchive::new(zip_file).unwrap();
 
-    // 'tfile' is a new ZipFile object that owns its data on the heap.
+    // 'zip_content' is a new ZipFile object that owns its data on the heap.
     //      .by_index(0) returns the first file in the archive as a ZipFile object.
     //      .by_index requires a mutable self object, so 'archive' must be mutable.
     //      Set as a mutable variable as copy() requires a mutable reference.
-    let mut tfile = archive.by_index(0).unwrap();
+    let mut zip_content = zip_archive.by_index(0).unwrap();
 
-    // 'tfile_name' is a new String that owns its data on the heap.
-    let tfile_name = tfile.name().to_string();
+    // 'txt_fname' is a new String that owns its data on the heap.
+    let txt_fname = zip_content.name().to_string();
 
-    // 'outfile' is a new File object that owns its data on the heap.
-    //      'tfile_name' is passed as a reference to the string object.
+    // 'txt_file' is a new File object that owns its data on the heap.
+    //      'txt_fname' is passed as a reference to the string object.
     //      Set as a mutable variable as copy() requires a mutable reference.
     //      When using create() file is read-only.
-    let mut outfile = File::create(&tfile_name).unwrap();
+    let mut txt_file = File::create(&txt_fname).unwrap();
 
     // copy() requires mutable references.
     //      Read & Write traits require a mutable reference for self
     //      --> more understanding required on this.
-    copy(&mut tfile, &mut outfile).unwrap();
+    copy(&mut zip_content, &mut txt_file).unwrap();
 
-    println!("[->] Extracted file: {}", &tfile_name);
+    println!("[->] Extracted file: {}", &txt_fname);
     // Return file name as string not File type otherwise permission denied issues
-    tfile_name
+    txt_fname
 }
