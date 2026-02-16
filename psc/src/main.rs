@@ -1,25 +1,26 @@
 use chrono::NaiveDate;
 use chrono::prelude::*;
 use reqwest::blocking::ClientBuilder;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::from_str;
 use std::fs::{File, write};
 use std::io::{BufRead, BufReader, copy};
 use std::path::Path;
 use zip::ZipArchive;
+use csv::Writer;
 
 const DATE_FORMAT: &str = "%Y-%m-%d";
 const BASE_URL: &str = "https://download.companieshouse.gov.uk";
 
 // Use Option<> for nested fields that are missing
 //      TODO Understand more on Option<>
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 struct Company {
     company_number: String,
     data: Data,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 struct Data {
     address: Option<Address>,
     etag: String,
@@ -31,7 +32,7 @@ struct Data {
     notified_on: Option<NaiveDate>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 struct Address {
     address_line_1: Option<String>,
     address_line_2: Option<String>,
@@ -41,7 +42,7 @@ struct Address {
     premises: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 struct Identification {
     country_registered: Option<String>,
     legal_authority: Option<String>,
@@ -50,7 +51,7 @@ struct Identification {
     registration_number: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 struct Links {
     #[serde(rename = "self")]
     self_: String,
@@ -71,19 +72,8 @@ fn main() {
     let zpath: &Path = download_zip_file(&fname);
     let tfile_name: String = extract_txt_file_from_zip(zpath);
 
-    let tfile = File::open(tfile_name).unwrap();
-    let reader = BufReader::new(tfile);
-
-    for line_res in reader.lines() {
-        // Understand more on temporary strings and borrowing.
-        //      [!] line_res.unwrap().trim() results in an error.
-        let line = line_res.unwrap();
-        let line = line.trim();
-
-        // Type annotations are required when deserializing a json string
-        let company: Company = from_str(&line).unwrap();
-        println!("{:?}", company);
-    }
+    let rows: Vec<Company> = read_json_lines_to_vec(&tfile_name);
+    let mut wtr = Writer::from_path("out.csv");
 }
 
 fn print_type_of<T>(_: &T) {
@@ -172,4 +162,22 @@ fn extract_txt_file_from_zip(zip_path: &Path) -> String {
     println!("[->] Extracted file: {}", &txt_fname);
     // Return file name as string not File type otherwise permission denied issues
     txt_fname
+}
+
+fn read_json_lines_to_vec(txt_file: &str) -> Vec<Company> {
+    let mut vec: Vec<Company> = Vec::new();
+    let tfile = File::open(txt_file).unwrap();
+    let reader = BufReader::new(tfile);
+
+    for line_res in reader.lines() {
+        // Understand more on temporary strings and borrowing.
+        //      [!] line_res.unwrap().trim() results in an error.
+        let line = line_res.unwrap();
+        let line = line.trim();
+
+        // Type annotations are required when deserializing a json string
+        let company: Company = from_str(&line).unwrap();
+        vec.push(company);
+    }
+    vec
 }
