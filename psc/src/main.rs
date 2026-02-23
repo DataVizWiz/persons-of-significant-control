@@ -16,19 +16,20 @@ const BASE_URL: &str = "https://download.companieshouse.gov.uk";
 // Create a dedicated struct for writing to csv.
 // This ensures a flattened table is being written rather than nested structs.
 #[derive(Serialize, Debug)]
-struct CompanyCsv {
+struct TransformedCompany {
     company_number: String,
+
     etag: String,
     kind: String,
     name: String,
-    notified_on: String,
-    address_line_1: String,
-    // address_line_2: String,
-    // country: String,
-    // locality: String,
-    // postal_code: String,
-    // premises: String,
+    // notified_on: NaiveDate,
 
+    address_line_1: String,
+    address_line_2: String,
+    country: String,
+    locality: String,
+    postal_code: String,
+    premises: String,
     // country_registered: String,
     // legal_authority: String,
     // legal_form: String,
@@ -112,21 +113,8 @@ fn main() {
         extract_txt_from_zip(zip_path, &txt_fname);
     }
     let rows: Vec<Company> = read_json_lines_to_vec(&txt_fname);
-
-    // Temporary solution until I learn more about enums
-    for row in rows {
-        // .as_ref() does not try to take the value "out" of Option
-        // .unwrap() panics because it demands Some(value)
-        let address_data = row.data.address.as_ref();
-
-        let address_line_1 = address_data
-            // .and_then() returns None if Option is None
-            // Otherwise, returns the result from the function (parameter)
-            // .clone() can be inefficient. This is temporary
-            .and_then(|addr| addr.address_line_1.clone())
-            .unwrap_or("No address line 1".to_string());
-            println!("{}", address_line_1)
-        }
+    // let transformed_rows: Vec<TransformedCompany> = transform_rows(rows);
+    transform_rows(rows);
 
     // let csv_fname = &txt_fname.replace(".txt", ".csv");
     // println!("{}", csv_fname);
@@ -225,8 +213,71 @@ fn read_json_lines_to_vec(txt_file: &str) -> Vec<Company> {
     vec
 }
 
-fn transform_rows() {
-    println!("Logic here to handle empty records");
+fn handle_missing_strings(option_str: Option<String>, default: &str) -> String {
+    option_str.unwrap_or(default.to_string())
+}
+
+fn transform_rows(vec: Vec<Company>) -> Vec<TransformedCompany> {
+    let mut transformed_vec: Vec<TransformedCompany> = Vec::new();
+
+    // Temporary transformation solution until I learn more about enums
+    for row in vec {
+        // Handle missing strings
+        let etag = handle_missing_strings(row.data.etag, "No etag");
+        let kind = handle_missing_strings(row.data.kind, "No kind");
+        let name = handle_missing_strings(row.data.name, "No name");
+
+        // .as_ref() does not try to take the value "out" of Option
+        // .unwrap() panics because it demands Some(value)
+        let address_data = row.data.address.as_ref();
+
+        let address_line_1 = address_data
+            // .and_then() returns None if Option is None
+            // Otherwise, returns the result from the function (parameter)
+            // .clone() can be inefficient. This is temporary
+            .and_then(|x| x.address_line_1.as_deref())
+            .unwrap_or("No address line 1");
+
+        let address_line_2 = address_data
+            .and_then(|x| x.address_line_2.as_deref())
+            .unwrap_or("No address line 2");
+
+        let country = address_data
+            .and_then(|x| x.country.as_deref())
+            .unwrap_or("No country");
+
+        let locality = address_data
+            .and_then(|x| x.locality.as_deref())
+            .unwrap_or("No locality");
+
+        let postal_code = address_data
+            .and_then(|x| x.postal_code.as_deref())
+            .unwrap_or("No postal code");
+
+        let premises = address_data
+            .and_then(|x| x.premises.as_deref())
+            .unwrap_or("No premises");
+
+        // Create a transformed struct for the row
+        let transformed = TransformedCompany {
+            company_number: row.company_number,
+
+            etag: etag,
+            kind: kind,
+            name: name,
+            // notified_on: row.data.notified_on.unwrap(),
+
+            address_line_1: address_line_1.to_string(),
+            address_line_2: address_line_2.to_string(),
+            country: country.to_string(),
+            locality: locality.to_string(),
+            postal_code: postal_code.to_string(),
+            premises: premises.to_string(),
+        };
+        println!("{:?}", transformed);
+        transformed_vec.push(transformed);
+    }
+    transformed_vec
 }
 
 // fn write_vec_to_csv(vec: Vec<Company>, csv_fname: &str) {
