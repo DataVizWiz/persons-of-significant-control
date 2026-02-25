@@ -60,7 +60,7 @@ struct Company {
 #[derive(Serialize, Deserialize, Debug)]
 struct Data {
     address: Option<Address>,
-    ceased_on: Option<String>,
+    ceased_on: Option<NaiveDate>,
     country_of_residence: Option<String>,
     date_of_birth: Option<DateOfBirth>,
     etag: Option<String>,
@@ -146,7 +146,7 @@ fn main() {
 
     let rows: Vec<Company> = read_json_lines_to_vec(&txt_fname);
     // let transformed_rows: Vec<TransformedCompany> = transform_rows(rows);
-    // transform_rows(rows);
+    transform_rows(rows);
 
     // let csv_fname = &txt_fname.replace(".txt", ".csv");
     // println!("{}", csv_fname);
@@ -237,46 +237,46 @@ fn handle_missing_strings(option_str: Option<String>, default: &str) -> String {
     option_str.unwrap_or(default.to_string())
 }
 
-// fn transform_rows(vec: Vec<Company>) -> Vec<TransformedCompany> {
-//     // Initiate a Vec struct on the stack.
-//     let mut transformed_vec: Vec<TransformedCompany> = Vec::new();
+fn transform_rows(vec: Vec<Company>) -> Vec<TransformedCompany> {
+    // Initiate a Vec struct on the stack.
+    let mut transformed_vec: Vec<TransformedCompany> = Vec::new();
 
-//     // Use vec over &vec (shared reference).
-//     // Take ownership of vec and move fields out of Company.
-//     for row in vec {
-//         // Handle missing strings
-//         let etag = handle_missing_strings(row.data.etag, "No etag");
-//         let kind = handle_missing_strings(row.data.kind, "No kind");
-//         let name = handle_missing_strings(row.data.name, "No name");
+    // Use vec over &vec (shared reference).
+    // Take ownership of vec and move fields out of Company.
+    for row in vec {
+        // Handle missing strings
+        let etag = handle_missing_strings(row.data.etag, "No etag");
+        let kind = handle_missing_strings(row.data.kind, "No kind");
+        let name = handle_missing_strings(row.data.name, "No name");
 
-//         // Need a more efficient way to handle defaults
-//         let address_data = row.data.address.unwrap_or(Address {
-//             address_line_1: Some("No address line 1".to_string()),
-//             address_line_2: Some("No address line 2".to_string()),
-//             country: Some("No country".to_string()),
-//             locality: Some("No locality".to_string()),
-//             postal_code: Some("No postal code".to_string()),
-//             premises: Some("No premises".to_string()),
-//         });
+        // Need a more efficient way to handle defaults
+        let address_data = row.data.address.unwrap_or(Address {
+            address_line_1: Some("No address line 1".to_string()),
+            address_line_2: Some("No address line 2".to_string()),
+            country: Some("No country".to_string()),
+            locality: Some("No locality".to_string()),
+            postal_code: Some("No postal code".to_string()),
+            premises: Some("No premises".to_string()),
+        });
 
-//         let transformed_row = TransformedCompany {
-//             company_number: row.company_number,
-//             etag: etag,
-//             kind: kind,
-//             name: name,
-//             notified_on: row.data.notified_on.unwrap_or(NaiveDate::default()),
-//             address_line_1: address_data.address_line_1.unwrap_or("No address line 1".to_string()),
-//             address_line_2: address_data.address_line_2.unwrap_or("No address line 2".to_string()),
-//             country: address_data.country.unwrap_or("No country".to_string()),
-//             locality: address_data.locality.unwrap_or("No locality".to_string()),
-//             postal_code: address_data.postal_code.unwrap_or("No postal code".to_string()),
-//             premises: address_data.premises.unwrap_or("No premises".to_string()),
-//         };
-//         println!("{:?}", transformed_row);
-//         transformed_vec.push(transformed_row);
-//     }
-//     transformed_vec
-// }
+        let transformed_row = TransformedCompany {
+            company_number: row.company_number,
+            etag: etag,
+            kind: kind,
+            name: name,
+            notified_on: row.data.notified_on.unwrap_or(NaiveDate::default()),
+            address_line_1: address_data.address_line_1.unwrap_or("No address line 1".to_string()),
+            address_line_2: address_data.address_line_2.unwrap_or("No address line 2".to_string()),
+            country: address_data.country.unwrap_or("No country".to_string()),
+            locality: address_data.locality.unwrap_or("No locality".to_string()),
+            postal_code: address_data.postal_code.unwrap_or("No postal code".to_string()),
+            premises: address_data.premises.unwrap_or("No premises".to_string()),
+        };
+        println!("{:?}", transformed_row);
+        transformed_vec.push(transformed_row);
+    }
+    transformed_vec
+}
 
 // fn write_vec_to_csv(vec: Vec<Company>, csv_fname: &str) {
 //     let mut wtr = Writer::from_path(csv_fname).unwrap();
