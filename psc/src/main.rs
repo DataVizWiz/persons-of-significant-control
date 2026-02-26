@@ -2,12 +2,12 @@
 // If we don't want to write to data, use references
 use chrono::{NaiveDate, Utc};
 use csv::Writer;
-use reqwest::blocking::ClientBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::fs::{File, write};
 use std::io::{BufRead, BufReader, copy};
 use std::path::Path;
+use tokio;
 use zip::ZipArchive;
 
 const DATE_FORMAT: &str = "%Y-%m-%d";
@@ -120,33 +120,36 @@ struct NameElements {
     title: Option<String>,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // '1of31' is a string literal that lives in the program binary (read-only memory)
     // for the entire duration of the program. It has a 'static' lifetime and cannot be changed.
     // In order for 'part' to "use" the string, it references the memory address
     // to the memory location where the string lives.
     let part: &str = "1of31";
 
-    let zip_fname: String = define_partition_fname(part);
+    let zip_fname = define_partition_fname(part);
     println!("[->] Partition file name: {}", zip_fname);
 
     // &Path::new() points to the same location as zip_fname and returns a Path ref
     let zip_path: &Path = Path::new(&zip_fname);
+    let exists = zip_path.exists();
 
-    if !check_path_exists(zip_path) {
-        download_zip_file(zip_path);
+    if !exists {
+        println!("[->] Downloading zip from url...");
+        download_zip_file(zip_path).await;
     }
 
-    let txt_fname: String = zip_fname.replace(".zip", ".txt");
+    let txt_fname = zip_fname.replace(".zip", ".txt");
     let txt_path: &Path = Path::new(&txt_fname);
 
-    if !check_path_exists(txt_path) {
-        extract_txt_from_zip(zip_path, &txt_fname);
-    }
+    // if !check_path_exists(txt_path) {
+    //     extract_txt_from_zip(zip_path, &txt_fname);
+    // }
 
-    let rows: Vec<Company> = read_json_lines_to_vec(&txt_fname);
-    // let transformed_rows: Vec<TransformedCompany> = transform_rows(rows);
-    transform_rows(rows);
+    // let rows: Vec<Company> = read_json_lines_to_vec(&txt_fname);
+    // // let transformed_rows: Vec<TransformedCompany> = transform_rows(rows);
+    // transform_rows(rows);
 
     // let csv_fname = &txt_fname.replace(".txt", ".csv");
     // println!("{}", csv_fname);
@@ -167,22 +170,25 @@ fn define_partition_fname(partition: &str) -> String {
     format!("psc-snapshot-{}_{}.zip", utc, partition)
 }
 
-fn check_path_exists(path: &Path) -> bool {
-    path.try_exists().unwrap_or(false)
-}
-
-fn download_zip_file(zip_path: &Path) {
-    // TODO Handle .unwrap()'s using match enum.
+async fn download_zip_file(zip_path: &Path) {
+    // .unwrap() is acceptable here because .to_str() will always return Some(&str).
     let url: String = format!("{}/{}", BASE_URL, zip_path.to_str().unwrap());
     println!("[->] Generated URL: {}", url);
 
-    let builder = ClientBuilder::new().user_agent("reqwest");
-    let client = builder.build().unwrap();
-    let zip_bytes = client.get(url).send().unwrap().bytes().unwrap();
-    println!("[->] Downloaded {} bytes", zip_bytes.len());
+    let client = reqwest::Client::new();
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .expect("Error making GET request");
 
-    // 'contents' uses AsRef trait (requires deeper understanding).
-    write(zip_path, zip_bytes).unwrap();
+    let bytes = response
+        .bytes()
+        .await
+        .expect("Error reading response into bytes");
+    println!("[->] Downloaded {} bytes", bytes.len());
+
+    write(zip_path, bytes).expect("Error writing to zip path");
 }
 
 fn extract_txt_from_zip(zip_path: &Path, txt_fname: &str) {
@@ -265,11 +271,17 @@ fn transform_rows(vec: Vec<Company>) -> Vec<TransformedCompany> {
             kind: kind,
             name: name,
             notified_on: row.data.notified_on.unwrap_or(NaiveDate::default()),
-            address_line_1: address_data.address_line_1.unwrap_or("No address line 1".to_string()),
-            address_line_2: address_data.address_line_2.unwrap_or("No address line 2".to_string()),
+            address_line_1: address_data
+                .address_line_1
+                .unwrap_or("No address line 1".to_string()),
+            address_line_2: address_data
+                .address_line_2
+                .unwrap_or("No address line 2".to_string()),
             country: address_data.country.unwrap_or("No country".to_string()),
             locality: address_data.locality.unwrap_or("No locality".to_string()),
-            postal_code: address_data.postal_code.unwrap_or("No postal code".to_string()),
+            postal_code: address_data
+                .postal_code
+                .unwrap_or("No postal code".to_string()),
             premises: address_data.premises.unwrap_or("No premises".to_string()),
         };
         println!("{:?}", transformed_row);
