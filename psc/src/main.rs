@@ -18,10 +18,14 @@ const BASE_URL: &str = "https://download.companieshouse.gov.uk";
 #[derive(Serialize, Debug)]
 struct TransformedCompany {
     company_number: String,
-    etag: String,
-    kind: String,
     name: String,
+    kind: String,
+    ceased: bool,
+    ceased_on: NaiveDate,
     notified_on: NaiveDate,
+    etag: String,
+    month: i32,
+    year: i32,
     address_line_1: String,
     address_line_2: String,
     country: String,
@@ -37,12 +41,6 @@ struct TransformedCompany {
     // natures_of_control: String,
 }
 
-// impl TransformedCompany {
-//     fn with_default(&self) {
-
-//     }
-// }
-
 // Use Option for nested fields that are missing
 // Where Option is not used, it implies records can never be missing
 #[derive(Serialize, Deserialize, Debug)]
@@ -51,15 +49,10 @@ struct Company {
     data: Data,
 }
 
-// impl Company {
-//     fn handle_missing_strings(self, option_str: Option<String>, default: &str) -> String {
-//         option_str.unwrap_or(default.to_string())
-//     }
-// }
-
 #[derive(Serialize, Deserialize, Debug)]
 struct Data {
     address: Option<Address>,
+    ceased: Option<bool>,
     ceased_on: Option<NaiveDate>,
     country_of_residence: Option<String>,
     date_of_birth: Option<DateOfBirth>,
@@ -144,12 +137,13 @@ async fn main() {
     let txt_fname = zip_fname.replace(".zip", ".txt");
 
     if !exists {
+        println!("[->] Extracting contents from zip...");
         extract_txt_from_zip(zip_path, &txt_fname);
     }
 
-    // let rows: Vec<Company> = read_json_lines_to_vec(&txt_fname);
-    // // let transformed_rows: Vec<TransformedCompany> = transform_rows(rows);
-    // transform_rows(rows);
+    let rows: Vec<Company> = read_json_lines_to_vec(&txt_fname);
+    // let transformed_rows: Vec<TransformedCompany> = transform_rows(rows);
+    transform_rows(rows);
 
     // let csv_fname = &txt_fname.replace(".txt", ".csv");
     // println!("{}", csv_fname);
@@ -164,9 +158,7 @@ fn define_partition_fname(partition: &str) -> String {
     // 'utc' is a variable allocated to the stack.
     // Utc::now() returns a DateTime struct allocated to the stack.
     // .format() returns a DelayedFormat struct on the stack.
-    // .to_string() binds a String struct to utc (also on the stack).
-    // String contains a pointer to the text data allocated to the heap.
-    let utc: String = Utc::now().format(DATE_FORMAT).to_string();
+    let utc = Utc::now().format(DATE_FORMAT);
     format!("psc-snapshot-{}_{}.zip", utc, partition)
 }
 
@@ -220,58 +212,101 @@ fn extract_txt_from_zip(zip_path: &Path, txt_fname: &str) {
 }
 
 fn read_json_lines_to_vec(txt_file: &str) -> Vec<Company> {
-    let tfile = File::open(txt_file).unwrap();
+    let tfile = File::open(txt_file).expect("Text file does not exist");
     let reader = BufReader::new(tfile);
 
     // Initiate a Vec struct on the stack (no heap allocation yet).
-    let mut vec: Vec<Company> = Vec::new();
+    let mut companies = Vec::new();
 
     for line_res in reader.lines() {
-        // line_res.unwrap().trim() causes a dangling reference
-        // line must own the String value before .trim()
+        // .trim() returns a string slice (ref to part of the heap data).
+        // line_res.unwrap().trim() causes a dangling reference.
+        // line must own the String value before .trim() borrows it (topic: lifetimes).
         let line = line_res.unwrap();
-        let line = line.trim();
+        let trimmed = line.trim();
 
-        let company: Company = serde_json::from_str(&line).unwrap();
+        // Next item in the loop if the line is empty.
+        if trimmed.is_empty() {
+            continue;
+        }
 
+        // Match to skip invalid serializations.
+        let company: Company = match serde_json::from_str(trimmed) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Skipping invalid JSON line: {} ({})", trimmed, e);
+                continue;
+            }
+        };
         // Push a Company struct onto the heap.
-        vec.push(company);
+        companies.push(company);
     }
-    vec
+    companies
 }
 
 fn handle_missing_strings(option_str: Option<String>, default: &str) -> String {
     option_str.unwrap_or(default.to_string())
 }
 
-fn transform_rows(vec: Vec<Company>) -> Vec<TransformedCompany> {
+fn transform_rows(companies: Vec<Company>) -> Vec<TransformedCompany> {
     // Initiate a Vec struct on the stack.
-    let mut transformed_vec: Vec<TransformedCompany> = Vec::new();
+    let mut transformed_companies = Vec::new();
 
     // Use vec over &vec (shared reference).
     // Take ownership of vec and move fields out of Company.
-    for row in vec {
+    for row in companies {
         // Handle missing strings
-        let etag = handle_missing_strings(row.data.etag, "No etag");
-        let kind = handle_missing_strings(row.data.kind, "No kind");
         let name = handle_missing_strings(row.data.name, "No name");
+        let kind = handle_missing_strings(row.data.kind, "No kind");
+        let etag = handle_missing_strings(row.data.etag, "No etag");
 
         // Need a more efficient way to handle defaults
-        let address_data = row.data.address.unwrap_or(Address {
-            address_line_1: Some("No address line 1".to_string()),
-            address_line_2: Some("No address line 2".to_string()),
-            country: Some("No country".to_string()),
-            locality: Some("No locality".to_string()),
-            postal_code: Some("No postal code".to_string()),
-            premises: Some("No premises".to_string()),
-        });
+        let dob_data = match row.data.date_of_birth {
+            Some(row) => row,
+            None => DateOfBirth {
+                month: None,
+                year: None,
+            },
+        };
+
+        let address_data = match row.data.address {
+            Some(row) => row,
+            None => Address {
+                address_line_1: None,
+                address_line_2: None,
+                country: None,
+                locality: None,
+                postal_code: None,
+                premises: None,
+            },
+        };
 
         let transformed_row = TransformedCompany {
             company_number: row.company_number,
-            etag: etag,
-            kind: kind,
+
+            // Root fields
             name: name,
+            kind: kind,
+            // Is this a good use of a match statement?
+            ceased: match row.data.ceased {
+                Some(r) => r,
+                None => false,
+            },
+            ceased_on: row.data.ceased_on.unwrap_or(NaiveDate::default()),
             notified_on: row.data.notified_on.unwrap_or(NaiveDate::default()),
+            etag: etag,
+
+            // DOB fields
+            month: match dob_data.month {
+                Some(row) => row,
+                None => 0,
+            },
+            year: match dob_data.year {
+                Some(row) => row,
+                None => 0,
+            },
+
+            // Address fields
             address_line_1: address_data
                 .address_line_1
                 .unwrap_or("No address line 1".to_string()),
@@ -285,10 +320,9 @@ fn transform_rows(vec: Vec<Company>) -> Vec<TransformedCompany> {
                 .unwrap_or("No postal code".to_string()),
             premises: address_data.premises.unwrap_or("No premises".to_string()),
         };
-        println!("{:?}", transformed_row);
-        transformed_vec.push(transformed_row);
+        transformed_companies.push(transformed_row);
     }
-    transformed_vec
+    transformed_companies
 }
 
 // fn write_vec_to_csv(vec: Vec<Company>, csv_fname: &str) {
