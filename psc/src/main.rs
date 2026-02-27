@@ -131,7 +131,8 @@ async fn main() {
     let zip_fname = define_partition_fname(part);
     println!("[->] Partition file name: {}", zip_fname);
 
-    // &Path::new() points to the same location as zip_fname and returns a Path ref
+    // &Path::new() points to the same memory location as zip_fname
+    //      returns a Path ref
     let zip_path: &Path = Path::new(&zip_fname);
     let exists = zip_path.exists();
 
@@ -141,11 +142,10 @@ async fn main() {
     }
 
     let txt_fname = zip_fname.replace(".zip", ".txt");
-    let txt_path: &Path = Path::new(&txt_fname);
 
-    // if !check_path_exists(txt_path) {
-    //     extract_txt_from_zip(zip_path, &txt_fname);
-    // }
+    if !exists {
+        extract_txt_from_zip(zip_path, &txt_fname);
+    }
 
     // let rows: Vec<Company> = read_json_lines_to_vec(&txt_fname);
     // // let transformed_rows: Vec<TransformedCompany> = transform_rows(rows);
@@ -192,7 +192,6 @@ async fn download_zip_file(zip_path: &Path) {
 }
 
 fn extract_txt_from_zip(zip_path: &Path, txt_fname: &str) {
-    // zip_path is an immutable reference
     println!("[->] Extracting zip path: {:?}", zip_path);
     let zip_file: File = File::open(zip_path).unwrap();
 
@@ -203,7 +202,9 @@ fn extract_txt_from_zip(zip_path: &Path, txt_fname: &str) {
     //      .by_index(0) returns the first file in the archive as a ZipFile object.
     //      .by_index requires a mutable self object, so 'archive' must be mutable.
     //      Set as a mutable variable as copy() requires a mutable reference.
-    let mut zip_content = zip_archive.by_index(0).unwrap();
+    let mut zip_content = zip_archive
+        .by_index(0)
+        .expect("Error getting index 0 from zip file");
 
     // 'txt_file' is a new File object that owns its data on the heap.
     //      'txt_fname' is passed as a reference to the string object.
@@ -214,7 +215,7 @@ fn extract_txt_from_zip(zip_path: &Path, txt_fname: &str) {
     // copy() requires mutable references.
     //      Read & Write traits require a mutable reference for self
     //      --> more understanding required on this.
-    copy(&mut zip_content, &mut txt_file).unwrap();
+    copy(&mut zip_content, &mut txt_file).expect("Error writing zip contents to text file");
     println!("[->] Extracted file: {}", &txt_fname);
 }
 
