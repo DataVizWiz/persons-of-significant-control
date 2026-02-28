@@ -23,52 +23,76 @@ struct TransformedCompany {
     ceased: bool,
     ceased_on: NaiveDate,
     notified_on: NaiveDate,
-    etag: String,
-    month: i32,
-    year: i32,
+    title: String,
+    forename: String,
+    surname: String,
+    birth_month: i32,
+    birth_year: i32,
+    country_of_residence: String,
     address_line_1: String,
     address_line_2: String,
     country: String,
     locality: String,
     postal_code: String,
     premises: String,
-    // country_registered: String,
-    // legal_authority: String,
-    // legal_form: String,
-    // place_registered: String,
-    // registration_number: String,
-    // link_self: String,
-    // natures_of_control: String,
+    registration_number: String,
+    country_registered: String,
+    legal_authority: String,
+    legal_form: String,
+    place_registered: String,
+    // natures_of_control: String, // Handle array of strings?
+    appointment_verification_statement_date: NaiveDate,
+    appointment_verification_statement_due_on: NaiveDate,
+    // anti_money_laundering_supervisory_bodies: String, // Handle array of strings?
+    etag: String,
+    link: String,
 }
 
 // Use Option for nested fields that are missing
 // Where Option is not used, it implies records can never be missing
-#[derive(Serialize, Deserialize, Debug)]
+// Default allows automatic default values for .unwrap_or_default()
+#[derive(Serialize, Deserialize, Debug, Default)]
 struct Company {
     company_number: String,
     data: Data,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 struct Data {
-    address: Option<Address>,
+    // Root fields
+    name: Option<String>,
+    kind: Option<String>,
+    etag: Option<String>,
     ceased: Option<bool>,
     ceased_on: Option<NaiveDate>,
+    notified_on: Option<NaiveDate>,
     country_of_residence: Option<String>,
-    date_of_birth: Option<DateOfBirth>,
-    etag: Option<String>,
-    identification: Option<Identification>,
-    verification_details: Option<VerificationDetails>,
-    kind: Option<String>,
-    links: Option<Links>,
-    name: Option<String>,
-    name_elements: Option<NameElements>,
     nationality: Option<String>,
     natures_of_control: Option<Vec<String>>,
-    notified_on: Option<NaiveDate>,
+
+    // Nested fields
+    name_elements: Option<NameElements>,
+    date_of_birth: Option<DateOfBirth>,
+    address: Option<Address>,
+    identification: Option<Identification>,
+    verification_details: Option<VerificationDetails>,
+    links: Option<Links>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
+struct NameElements {
+    forename: Option<String>,
+    surname: Option<String>,
+    title: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Default)]
+struct DateOfBirth {
+    month: Option<i32>,
+    year: Option<i32>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Default)]
 struct Address {
     address_line_1: Option<String>,
     address_line_2: Option<String>,
@@ -78,13 +102,7 @@ struct Address {
     premises: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-struct DateOfBirth {
-    month: Option<i32>,
-    year: Option<i32>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 struct Identification {
     country_registered: Option<String>,
     legal_authority: Option<String>,
@@ -93,24 +111,17 @@ struct Identification {
     registration_number: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 struct VerificationDetails {
     appointment_verification_statement_date: Option<NaiveDate>,
     appointment_verification_statement_due_on: Option<NaiveDate>,
     anti_money_laundering_supervisory_bodies: Option<Vec<String>>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 struct Links {
     #[serde(rename = "self")]
-    self_: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct NameElements {
-    forename: Option<String>,
-    surname: Option<String>,
-    title: Option<String>,
+    link: Option<String>,
 }
 
 #[tokio::main]
@@ -244,8 +255,18 @@ fn read_json_lines_to_vec(txt_file: &str) -> Vec<Company> {
     companies
 }
 
-fn handle_missing_strings(option_str: Option<String>, default: &str) -> String {
-    option_str.unwrap_or(default.to_string())
+fn handle_missing_strings(option: Option<String>) -> String {
+    match option {
+        Some(s) => s,
+        None => "No data provided".to_string(),
+    }
+}
+
+fn handle_missing_dates(option: Option<NaiveDate>) -> NaiveDate {
+    match option {
+        Some(d) => d,
+        None => NaiveDate::default(),
+    }
 }
 
 fn transform_rows(companies: Vec<Company>) -> Vec<TransformedCompany> {
@@ -255,70 +276,61 @@ fn transform_rows(companies: Vec<Company>) -> Vec<TransformedCompany> {
     // Use vec over &vec (shared reference).
     // Take ownership of vec and move fields out of Company.
     for row in companies {
-        // Handle missing strings
-        let name = handle_missing_strings(row.data.name, "No name");
-        let kind = handle_missing_strings(row.data.kind, "No kind");
-        let etag = handle_missing_strings(row.data.etag, "No etag");
-
-        // Need a more efficient way to handle defaults
-        let dob_data = match row.data.date_of_birth {
-            Some(row) => row,
-            None => DateOfBirth {
-                month: None,
-                year: None,
-            },
-        };
-
-        let address_data = match row.data.address {
-            Some(row) => row,
-            None => Address {
-                address_line_1: None,
-                address_line_2: None,
-                country: None,
-                locality: None,
-                postal_code: None,
-                premises: None,
-            },
-        };
+        // Initialize structs
+        // .unwrap_or_default() will take None as the default value
+        let dob_data = row.data.date_of_birth.unwrap_or_default();
+        let address_data = row.data.address.unwrap_or_default();
+        let identity_data = row.data.identification.unwrap_or_default();
+        let verify_data = row.data.verification_details.unwrap_or_default();
+        let link_data = row.data.links.unwrap_or_default();
+        let name_data = row.data.name_elements.unwrap_or_default();
 
         let transformed_row = TransformedCompany {
             company_number: row.company_number,
 
             // Root fields
-            name: name,
-            kind: kind,
-            // Is this a good use of a match statement?
-            ceased: match row.data.ceased {
-                Some(r) => r,
-                None => false,
-            },
-            ceased_on: row.data.ceased_on.unwrap_or(NaiveDate::default()),
-            notified_on: row.data.notified_on.unwrap_or(NaiveDate::default()),
-            etag: etag,
+            name: handle_missing_strings(row.data.name),
+            kind: handle_missing_strings(row.data.kind),
+            ceased: row.data.ceased.unwrap_or_default(),
+            ceased_on: handle_missing_dates(row.data.ceased_on),
+            notified_on: handle_missing_dates(row.data.notified_on),
+            etag: handle_missing_strings(row.data.etag),
+            country_of_residence: handle_missing_strings(row.data.country_of_residence),
+
+            // Name fields
+            forename: handle_missing_strings(name_data.forename),
+            surname: handle_missing_strings(name_data.surname),
+            title: handle_missing_strings(name_data.title),
 
             // DOB fields
-            month: match dob_data.month {
-                Some(row) => row,
-                None => 0,
-            },
-            year: match dob_data.year {
-                Some(row) => row,
-                None => 0,
-            },
+            birth_month: dob_data.month.unwrap_or_default(),
+            birth_year: dob_data.year.unwrap_or_default(),
 
             // Address fields
-            address_line_1: address_data
-                .address_line_1
-                .unwrap_or("No address line 1".to_string()),
-            address_line_2: address_data
-                .address_line_2
-                .unwrap_or("No address line 2".to_string()),
-            country: address_data.country.unwrap_or("No country".to_string()),
-            locality: address_data.locality.unwrap_or("No locality".to_string()),
-            postal_code: address_data
-                .postal_code
-                .unwrap_or("No postal code".to_string()),
-            premises: address_data.premises.unwrap_or("No premises".to_string()),
+            address_line_1: handle_missing_strings(address_data.address_line_1),
+            address_line_2: handle_missing_strings(address_data.address_line_2),
+            country: handle_missing_strings(address_data.country),
+            locality: handle_missing_strings(address_data.locality),
+            postal_code: handle_missing_strings(address_data.postal_code),
+            premises: handle_missing_strings(address_data.premises),
+
+            // Identification fields
+            country_registered: handle_missing_strings(identity_data.country_registered),
+            legal_authority: handle_missing_strings(identity_data.legal_authority),
+            legal_form: handle_missing_strings(identity_data.legal_form),
+            place_registered: handle_missing_strings(identity_data.place_registered),
+            registration_number: handle_missing_strings(identity_data.registration_number),
+
+            // Verification fields
+            appointment_verification_statement_date: handle_missing_dates(
+                verify_data.appointment_verification_statement_date,
+            ),
+            appointment_verification_statement_due_on: handle_missing_dates(
+                verify_data.appointment_verification_statement_due_on,
+            ),
+
+            // Link fields
+            link: handle_missing_strings(link_data.link),
         };
         transformed_companies.push(transformed_row);
     }
