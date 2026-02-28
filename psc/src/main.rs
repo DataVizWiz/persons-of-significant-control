@@ -13,8 +13,6 @@ use zip::ZipArchive;
 const DATE_FORMAT: &str = "%Y-%m-%d";
 const BASE_URL: &str = "https://download.companieshouse.gov.uk";
 
-// Create a dedicated struct for writing to csv.
-// This ensures a flattened table is being written rather than nested structs.
 #[derive(Serialize, Debug)]
 struct TransformedCompany {
     company_number: String,
@@ -48,8 +46,6 @@ struct TransformedCompany {
     link: String,
 }
 
-// Use Option for nested fields that are missing
-// Where Option is not used, it implies records can never be missing
 // Default allows automatic default values for .unwrap_or_default()
 #[derive(Serialize, Deserialize, Debug, Default)]
 struct Company {
@@ -126,17 +122,11 @@ struct Links {
 
 #[tokio::main]
 async fn main() {
-    // '1of31' is a string literal that lives in the program binary (read-only memory)
-    // for the entire duration of the program. It has a 'static' lifetime and cannot be changed.
-    // In order for 'part' to "use" the string, it references the memory address
-    // to the memory location where the string lives.
     let part: &str = "1of31";
 
     let zip_fname = define_partition_fname(part);
     println!("[->] Partition file name: {}", zip_fname);
 
-    // &Path::new() points to the same memory location as zip_fname
-    //      returns a Path ref
     let zip_path: &Path = Path::new(&zip_fname);
     let exists = zip_path.exists();
 
@@ -153,22 +143,13 @@ async fn main() {
     }
 
     let rows: Vec<Company> = read_json_lines_to_vec(&txt_fname);
-    // let transformed_rows: Vec<TransformedCompany> = transform_rows(rows);
-    transform_rows(rows);
+    let transformed_rows: Vec<TransformedCompany> = transform_rows(rows);
 
-    // let csv_fname = &txt_fname.replace(".txt", ".csv");
-    // println!("{}", csv_fname);
-    // write_vec_to_csv(rows, &csv_fname);
-}
-
-fn print_type_of<T>(_: &T) {
-    println!("{}", std::any::type_name::<T>());
+    let csv_fname = &txt_fname.replace(".txt", ".csv");
+    write_rows_to_csv(transformed_rows, &csv_fname);
 }
 
 fn define_partition_fname(partition: &str) -> String {
-    // 'utc' is a variable allocated to the stack.
-    // Utc::now() returns a DateTime struct allocated to the stack.
-    // .format() returns a DelayedFormat struct on the stack.
     let utc = Utc::now().format(DATE_FORMAT);
     format!("psc-snapshot-{}_{}.zip", utc, partition)
 }
@@ -269,13 +250,13 @@ fn handle_missing_dates(option: Option<NaiveDate>) -> NaiveDate {
     }
 }
 
-fn transform_rows(companies: Vec<Company>) -> Vec<TransformedCompany> {
+fn transform_rows(rows: Vec<Company>) -> Vec<TransformedCompany> {
     // Initiate a Vec struct on the stack.
     let mut transformed_companies = Vec::new();
 
     // Use vec over &vec (shared reference).
     // Take ownership of vec and move fields out of Company.
-    for row in companies {
+    for row in rows {
         // Initialize structs
         // .unwrap_or_default() will take None as the default value
         let dob_data = row.data.date_of_birth.unwrap_or_default();
@@ -337,61 +318,19 @@ fn transform_rows(companies: Vec<Company>) -> Vec<TransformedCompany> {
     transformed_companies
 }
 
-// fn write_vec_to_csv(vec: Vec<Company>, csv_fname: &str) {
-//     let mut wtr = Writer::from_path(csv_fname).unwrap();
+fn write_rows_to_csv(rows: Vec<TransformedCompany>, csv_fname: &str) {
+    let mut wtr = Writer::from_path(csv_fname).expect("Error initializing csv file");
 
-//     for row in vec {
-//         // .unwrap() transfers ownership of row.data.address (Address)
-//         //      To avoid move errors, we unwrap first before further use
-//         //      [!] This means row.data.address is moved and no longer available for use
-//         let address = row.data.address.unwrap_or(Address {
-//             // Temporary default until I implement matching
-//             address_line_1: Some("N/A".to_string()),
-//             address_line_2: Some("N/A".to_string()),
-//             country: Some("N/A".to_string()),
-//             locality: Some("N/A".to_string()),
-//             postal_code: Some("N/A".to_string()),
-//             premises: Some("N/A".to_string()),
-//         });
+    // .serialize() modifies wtr in the existing memory location.
+    // Take a reference of rows so we can read data from the struct
+    for row in &rows {
+        if let Err(e) = wtr.serialize(row) {
+            // eprintln! is for error logs
+            eprintln!("Error writing company row {}: {}", row.company_number, e);
+        }
+    }
 
-//         let csv_row = CompanyCsv {
-//             // Fields require .unwrap() because our deserialized struct has Option types
-//             //      but our serialize struct has String types
-//             company_number: row.company_number,
-//             // [!] row.data (Data) is a struct on the stack - requires further understanding
-//             //      String types in the struct are still on the heap
-//             etag: row.data.etag.unwrap(),
-//             kind: row.data.kind.unwrap(),
-//             // .unwrap_or() takes parameter T which is the value inside Option
-//             //      Either its Some(value) or None
-//             name: row.data.name.unwrap_or("N/A".to_string()),
-//             // How would this work with Some(NaiveDate)?
-//             notified_on: row.data.notified_on.unwrap_or("N/A".to_string()),
-//             address_line_1: address.address_line_1.unwrap_or("N/A".to_string()),
-//             // address_line_2: address.address_line_2.unwrap_or("N/A".to_string()),
-//             // country: row.data.address.unwrap().country.unwrap(),
-//             // locality: row.data.address.unwrap().locality.unwrap(),
-//             // postal_code: row.data.address.unwrap().postal_code.unwrap(),
-//             // premises: row.data.address.unwrap().premises.unwrap(),
-//             // country_registered: row.data.identification.unwrap().country_registered.unwrap(),
-//             // legal_authority: row.data.identification.unwrap().legal_authority.unwrap(),
-//             // legal_form: row.data.identification.unwrap().legal_form.unwrap(),
-//             // place_registered: row.data.identification.unwrap().place_registered.unwrap(),
-//             // registration_number: row
-//             //     .data
-//             //     .identification
-//             //     .unwrap()
-//             //     .registration_number
-//             //     .unwrap(),
-//             // link_self: row.data.links.unwrap().self_.unwrap(),
-//             // // .map() is a method of an Option enum, it says
-//             // //      "If there is a vec inside this Option enum, join the elements by a |"
-//             // //      |v| is an example of a closure, it allows you to create functions in line
-//             // //      It can also be .map(function_with_join_logic)
-//             // natures_of_control: row.data.natures_of_control.map(|v| v.join("|")).unwrap(),
-//         };
-//         // Rust recognises wtr as a mutable borrow even though we aren't referencing it?
-//         wtr.serialize(csv_row).unwrap();
-//     }
-//     wtr.flush().unwrap()
-// }
+    if let Err(e) = wtr.flush() {
+        eprint!("Error writing rows to csv file: {}", e)
+    }
+}
