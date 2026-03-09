@@ -1,5 +1,3 @@
-// NOTES:
-// If we don't want to write to data, use references
 use chrono::{NaiveDate, Utc};
 use csv::Writer;
 use serde::{Deserialize, Serialize};
