@@ -16,6 +16,7 @@ const BASE_URL: &str = "https://download.companieshouse.gov.uk";
 #[derive(Serialize, Debug)]
 struct TransformedCompany {
     company_number: String,
+    primary_key: String,
     name: String,
     kind: String,
     ceased: bool,
@@ -27,6 +28,8 @@ struct TransformedCompany {
     birth_month: i32,
     birth_year: i32,
     country_of_residence: String,
+    nationality: String,
+    natures_of_control: String,
     address_line_1: String,
     address_line_2: String,
     country: String,
@@ -38,10 +41,8 @@ struct TransformedCompany {
     legal_authority: String,
     legal_form: String,
     place_registered: String,
-    // natures_of_control: String, // Handle array of strings?
     appointment_verification_statement_date: NaiveDate,
     appointment_verification_statement_due_on: NaiveDate,
-    // anti_money_laundering_supervisory_bodies: String, // Handle array of strings?
     etag: String,
     link: String,
 }
@@ -265,9 +266,11 @@ fn transform_rows(rows: Vec<Company>) -> Vec<TransformedCompany> {
         let verify_data = row.data.verification_details.unwrap_or_default();
         let link_data = row.data.links.unwrap_or_default();
         let name_data = row.data.name_elements.unwrap_or_default();
+        let link = handle_missing_strings(link_data.link);
 
         let transformed_row = TransformedCompany {
             company_number: row.company_number,
+            primary_key: link.replace("/company/", "").replace("/", "-"),
 
             // Root fields
             name: handle_missing_strings(row.data.name),
@@ -277,6 +280,8 @@ fn transform_rows(rows: Vec<Company>) -> Vec<TransformedCompany> {
             notified_on: handle_missing_dates(row.data.notified_on),
             etag: handle_missing_strings(row.data.etag),
             country_of_residence: handle_missing_strings(row.data.country_of_residence),
+            nationality: handle_missing_strings(row.data.nationality),
+            natures_of_control: row.data.natures_of_control.unwrap_or_default().join(";"),
 
             // Name fields
             forename: handle_missing_strings(name_data.forename),
@@ -311,7 +316,7 @@ fn transform_rows(rows: Vec<Company>) -> Vec<TransformedCompany> {
             ),
 
             // Link fields
-            link: handle_missing_strings(link_data.link),
+            link: link,
         };
         transformed_companies.push(transformed_row);
     }
